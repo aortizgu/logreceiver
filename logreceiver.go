@@ -3,6 +3,7 @@ package logreceiver
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ type LogReceiver struct {
 	unregister     chan *Client
 	startTime      time.Time
 	worker         worker.Worker
+	iface          net.Interface
 }
 
 // NewLogReceiver : log server object with functional modules
@@ -44,7 +46,7 @@ type LogReceiver struct {
 // |------Syslog Server
 // |------WebSocket Server
 // |------mDNS Server
-func NewLogReceiver(name, service, domain, dbPath string, port, cleanPeriodMs, maxLogs int) *LogReceiver {
+func NewLogReceiver(name, service, domain, dbPath string, port, cleanPeriodMs, maxLogs int, iface net.Interface) *LogReceiver {
 	return &LogReceiver{
 		name:          name,
 		service:       service,
@@ -58,6 +60,7 @@ func NewLogReceiver(name, service, domain, dbPath string, port, cleanPeriodMs, m
 		unregister:    make(chan *Client),
 		clients:       make(map[*Client]bool),
 		startTime:     time.Now(),
+		iface:         iface,
 	}
 }
 
@@ -118,8 +121,9 @@ func (l *LogReceiver) runDbCleanerHandler() bool {
 
 // Start functional members
 func (l *LogReceiver) Start() {
+	ifaces := []net.Interface{l.iface}
 	//starts zeroconf server
-	zeroconfserver, err := zeroconf.Register(l.name, l.service, l.domain, l.port, nil, nil)
+	zeroconfserver, err := zeroconf.Register(l.name, l.service, l.domain, l.port, nil, ifaces)
 	if err != nil {
 		panic(err)
 	}
