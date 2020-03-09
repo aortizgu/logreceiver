@@ -17,7 +17,7 @@ import (
 )
 
 // Version : LogReceiver Version
-const Version = "0.0.0"
+const Version = "0.1.0"
 
 // LogReceiver : main object
 type LogReceiver struct {
