@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"worker"
 
+	"github.com/aortizgu/worker"
 	"github.com/grandcat/zeroconf"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite" //import
