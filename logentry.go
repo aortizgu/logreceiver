@@ -16,7 +16,7 @@ type LogEntry struct {
 	Severity       int    `json:"severity"`
 	Timestamp      int64  `json:"timestamp"`
 	Hostname       string `json:"hostname"`
-	AppName        string `json:"app_name"`
+	App            string `json:"app"`
 	Msgid          string `json:"msg_id"`
 	StructuredData string `json:"-"`
 	Message        string `json:"message"`
@@ -50,7 +50,7 @@ func NewLogEntry(logPart map[string]interface{}) (*LogEntry, bool) {
 		getInt(logPart, &logEntry.Facility, "facility") &&
 		getInt(logPart, &logEntry.Severity, "severity") &&
 		getString(logPart, &logEntry.Hostname, "hostname") &&
-		getString(logPart, &logEntry.AppName, "app_name") &&
+		getString(logPart, &logEntry.App, "app_name") &&
 		getString(logPart, &logEntry.Msgid, "msg_id") &&
 		getString(logPart, &logEntry.StructuredData, "structured_data") &&
 		getString(logPart, &logEntry.Message, "message") {

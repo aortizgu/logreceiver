@@ -1,11 +1,12 @@
 package logreceiver
 
 import (
+	"container/list"
 	"encoding/json"
 	"log"
 	"net"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 	"worker"
 
@@ -36,18 +37,21 @@ type LogReceiver struct {
 	register       chan *Client
 	unregister     chan *Client
 	startTime      time.Time
-	worker         worker.Worker
+	cleanerWorker  worker.Worker
+	writerWorker   worker.Worker
 	iface          net.Interface
+	logQueue       *list.List
+	mutex          *sync.Mutex
 }
 
 // NewLogReceiver : log server object with functional modules
 // |------DB
-// |------DB Cleaner
+// |------DB Writer/Cleaner
 // |------Syslog Server
 // |------WebSocket Server
 // |------mDNS Server
 func NewLogReceiver(name, service, domain, dbPath string, port, cleanPeriodMs, maxLogs int, iface net.Interface) *LogReceiver {
-	return &LogReceiver{
+	l := LogReceiver{
 		name:          name,
 		service:       service,
 		domain:        domain,
@@ -62,6 +66,9 @@ func NewLogReceiver(name, service, domain, dbPath string, port, cleanPeriodMs, m
 		startTime:     time.Now(),
 		iface:         iface,
 	}
+	l.mutex = &sync.Mutex{}
+	l.logQueue = list.New()
+	return &l
 }
 
 // Runable handler for Syslog Server
@@ -70,7 +77,10 @@ func (l *LogReceiver) runSyslogHandler() {
 	for logParts := range l.syslogChan {
 		logMsg, ok := NewLogEntry(logParts)
 		if ok {
-			l.db.Save(logMsg)
+			l.mutex.Lock()
+			l.logQueue.PushBack(logMsg)
+			l.mutex.Unlock()
+			//l.db.Save(logMsg)
 			logsJSON, err := json.Marshal(logMsg)
 			if err == nil {
 				logBYTES := []byte(logsJSON)
@@ -106,7 +116,22 @@ func (l *LogReceiver) runWebsocketClientHandler() {
 }
 
 // Runable handler for Worker
-func (l *LogReceiver) runDbCleanerHandler() bool {
+func (l *LogReceiver) runDbWriterWork() bool {
+	l.mutex.Lock()
+	var queue = l.logQueue
+	l.logQueue = list.New()
+	l.mutex.Unlock()
+	for element := queue.Front(); element != nil; element = element.Next() {
+		l.db.Save(element.Value)
+	}
+	for element := queue.Front(); element != nil; element = element.Next() {
+		queue.Remove(element)
+	}
+	return true
+}
+
+// Runable handler for Worker
+func (l *LogReceiver) runDbCleanerWork() bool {
 	count := 0
 	l.db.Model(&LogEntry{}).Count(&count)
 	if count > 0 {
@@ -136,6 +161,7 @@ func (l *LogReceiver) Start() {
 	}
 	db.AutoMigrate(&LogEntry{})
 	l.db = db
+	l.db.LogMode(true)
 
 	//starts syslog server
 	l.syslogChan = make(syslog.LogPartsChannel)
@@ -147,38 +173,29 @@ func (l *LogReceiver) Start() {
 	l.syslogServer.Boot()
 	go l.runSyslogHandler()
 
-	//starts worker
-	l.worker.Start(l.cleanPeriodMs, l.runDbCleanerHandler)
+	//starts workers
+	l.cleanerWorker.Start(l.cleanPeriodMs, l.runDbCleanerWork)
+	l.writerWorker.Start(5000, l.runDbWriterWork)
 
 	//start websocket handler
 	go l.runWebsocketClientHandler()
 }
 
 // Search : search in db
-func (l *LogReceiver) Search(device, hostname, day string, severity, maxEntries, offsetEntries int64) []LogEntry {
+func (l *LogReceiver) Search(app, hostname string, from, to, severity, maxEntries, offsetEntries int64) []LogEntry {
 	var logs []LogEntry
 	filter := l.db.Where("")
-	if device != "" {
-		filter = filter.Where("device LIKE ?", "%"+device+"%")
+	if app != "" {
+		filter = filter.Where("app LIKE ?", "%"+app+"%")
 	}
 	if hostname != "" {
 		filter = filter.Where("hostname LIKE ?", "%"+hostname+"%")
 	}
-	if day != "" {
-		parts := strings.Split(day, "-")
-		if len(parts) == 3 {
-			year, _ := strconv.Atoi(parts[2])
-			month, _ := strconv.Atoi(parts[1])
-			day, _ := strconv.Atoi(parts[0])
-			from := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC).Unix()
-			filter = filter.Where("timestamp > ?", from)
-			until := time.Date(year, time.Month(month), day, 23, 59, 59, 0, time.UTC).Unix()
-			filter = filter.Where("timestamp < ?", until)
-		}
+	if from != 0 && to != 0 {
+		filter = filter.Where("timestamp >= ?", from)
+		filter = filter.Where("timestamp <= ?", to)
 	}
-	if severity != 0 {
-		filter = filter.Where("severity = ?", severity)
-	}
+	filter = filter.Where("severity <= ?", severity)
 	if maxEntries != 0 {
 		filter.Offset(offsetEntries).Limit(maxEntries).Find(&logs)
 	} else {
