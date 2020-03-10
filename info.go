@@ -6,6 +6,7 @@ type Info struct {
 	Port                int    `json:"port"`
 	MaxLogs             int    `json:"max_logs"`
 	LogCount            int    `json:"log_count"`
+	OldestLog           int64  `json:"oldest_log"`
 	OpenWebSocketsCount int    `json:"open_web_sockets_count"`
 	Uptime              int64  `json:"uptime"`
 }

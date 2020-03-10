@@ -161,7 +161,7 @@ func (l *LogReceiver) Start() {
 	}
 	db.AutoMigrate(&LogEntry{})
 	l.db = db
-	l.db.LogMode(true)
+	l.db.LogMode(false)
 
 	//starts syslog server
 	l.syslogChan = make(syslog.LogPartsChannel)
@@ -207,7 +207,9 @@ func (l *LogReceiver) Search(app, hostname string, from, to, severity, maxEntrie
 // GetInfo : get info about object
 func (l *LogReceiver) GetInfo() *Info {
 	count := 0
-	l.db.Model(&LogEntry{}).Count(&count)
+	first := &LogEntry{}
+	l.db.Model(first).Count(&count)
+	l.db.Model(first).First(first)
 	info := &Info{
 		Version:             Version,
 		LogCount:            count,
@@ -215,6 +217,7 @@ func (l *LogReceiver) GetInfo() *Info {
 		OpenWebSocketsCount: len(l.clients),
 		Port:                l.port,
 		Uptime:              int64(time.Since(l.startTime) / time.Second),
+		OldestLog:           first.Timestamp,
 	}
 	return info
 }
