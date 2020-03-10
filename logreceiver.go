@@ -80,7 +80,6 @@ func (l *LogReceiver) runSyslogHandler() {
 			l.mutex.Lock()
 			l.logQueue.PushBack(logMsg)
 			l.mutex.Unlock()
-			//l.db.Save(logMsg)
 			logsJSON, err := json.Marshal(logMsg)
 			if err == nil {
 				logBYTES := []byte(logsJSON)
